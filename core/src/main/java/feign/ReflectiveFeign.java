@@ -155,7 +155,7 @@ public class ReflectiveFeign extends Feign {
         if (!md.formParams().isEmpty() && md.template().bodyTemplate() == null) {
           buildTemplate =
               new BuildFormEncodedTemplateFromArgs(md, encoder, queryMapEncoder, target);
-        } else if (md.bodyIndex() != null) {
+        } else if (md.bodyIndex() != null || UnconditionalEncoder.class.isAssignableFrom(encoder.getClass())) {
           buildTemplate = new BuildEncodedTemplateFromArgs(md, encoder, queryMapEncoder, target);
         } else {
           buildTemplate = new BuildTemplateByResolvingArgs(md, queryMapEncoder, target);
@@ -379,10 +379,22 @@ public class ReflectiveFeign extends Feign {
     protected RequestTemplate resolve(Object[] argv,
                                       RequestTemplate mutable,
                                       Map<String, Object> variables) {
-      Object body = argv[metadata.bodyIndex()];
-      checkArgument(body != null, "Body parameter %s was null", metadata.bodyIndex());
+
+      boolean unconditionalEncoder = UnconditionalEncoder.class.isAssignableFrom(encoder.getClass());
+
+      Object body = null;
+      if (!unconditionalEncoder) {
+        body = argv[metadata.bodyIndex()];
+        checkArgument(body != null, "Body parameter %s was null", metadata.bodyIndex());
+      }
+
       try {
-        encoder.encode(body, metadata.bodyType(), mutable);
+        if (unconditionalEncoder) {
+          UnconditionalEncoder unEncoder = (UnconditionalEncoder) encoder;
+          unEncoder.encode(argv, mutable);
+        } else {
+          encoder.encode(body, metadata.bodyType(), mutable);
+        }
       } catch (EncodeException e) {
         throw e;
       } catch (RuntimeException e) {
